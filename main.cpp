@@ -127,7 +127,7 @@ vector<vector<double>> moments(int n, const vector<double> &z) {
     return result;
 }
 
-double qfsum(vector<double> (*distFunc)(int, double, double), int n, vector<double> &z) {
+vector<double> qfsum(vector<double> (*distFunc)(int, double, double), int n, vector<double> &z) {
     vector<double> knots, table(0), qfcoeffs;
     double result = 0;
     for (int i = 0; i < z.size() - 1; i++) {
@@ -146,26 +146,33 @@ double qfsum(vector<double> (*distFunc)(int, double, double), int n, vector<doub
         }
     }
     qfcoeffs = LUPsolve(T, transpose(moments(n, z)));
+    double summod;
     for (int i = 0; i < n; i++) {
         result += qfcoeffs[i] * f(table[i]);
+        summod+=abs(qfcoeffs[i]);
+        //cout << qfcoeffs[i] << endl;
     }
-    return result;
+    return {result, summod};
 }
 
 int main() {
     ios_base::sync_with_stdio(0);
     cin.tie(0);
     cout.precision(16);
-    double prev = 0, cur;
-    vector<double> z(2);
-    vector<double> plot1, plot2;
+    double prev = 0, cur, precise = 7.077031437995793610263911711602477164432, summod;
+    vector<double> z(2), is;
+    vector<double> plot1, plot2, plot3, plot4;
     z[0] = 0;
     z[1] = 1.8;
     for (int n = 1; n < 56; n++) {
-        cur = qfsum(eq_dist, n, z);
+        is = qfsum(eq_dist, n, z);
+        cur = is[0];
+        summod = is[1];
         plot1.push_back(cur);
         plot2.push_back(abs(cur-prev));
-        cout << n << ' ' << fixed << cur << ' ' << fixed << abs(cur - prev) << endl;
+        plot3.push_back(abs(precise-cur));
+        plot4.push_back(summod);
+        cout << n << ' ' << fixed << cur << ' ' << fixed << abs(cur - prev) << ' ' << abs(precise - cur) << ' ' << summod << endl;
         prev = cur;
     }
     /*cout << "[";
@@ -187,6 +194,28 @@ int main() {
     cout << "[";
     for (int n = 0; n < 55 ; n++){
         cout << fixed << plot2[n] << ' ';
+    }
+    cout << "]";
+    cout << endl;
+     /*cout << "[";
+    for (int n = 1; n < 56; n++){
+        cout << n << ' ';
+    }
+    cout << "]" << endl;
+    cout << "[";
+    for (int n = 0; n < 55 ; n++){
+        cout << fixed << plot3[n] << ' ';
+    }
+    cout << "]";
+    cout << endl;*/
+    /*cout << "[";
+    for (int n = 1; n < 56; n++){
+        cout << n << ' ';
+    }
+    cout << "]" << endl;
+    cout << "[";
+    for (int n = 0; n < 55 ; n++){
+        cout << fixed << plot4[n] << ' ';
     }
     cout << "]";
     cout << endl;*/
