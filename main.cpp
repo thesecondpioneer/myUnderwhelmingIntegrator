@@ -90,6 +90,47 @@ vector<vector<double>> transpose(vector<vector<double>> A) { //returns the trans
     return result;
 }
 
+vector<double> durand_kerner_real(vector<double> coefficients, int max_iterations, double epsilon) {
+    int degree = coefficients.size() - 1;
+    vector<double> roots(degree);
+    double leadcoef = coefficients[coefficients.size()-1];
+    for (int i = 0; i < coefficients.size(); ++i) {
+        coefficients[i] /= leadcoef;
+    }
+    for (int i = 0; i < degree; ++i) {
+        double angle = M_PI * i / degree;
+        roots[i] = cos(angle);
+    }
+    for (int iteration = 0; iteration < max_iterations; ++iteration) {
+        vector<double> new_roots(degree);
+        for (int i = 0; i < degree; ++i) {
+            double denominator = 1.0;
+            for (int j = 0; j < degree; ++j) {
+                if (i != j) {
+                    denominator *= (roots[i] - roots[j]);
+                }
+            }
+            double f_x = 0.0;
+            for (int k = 0; k <= degree; ++k) {
+                f_x += coefficients[k] * pow(roots[i], k);
+            }
+            new_roots[i] = roots[i] - f_x / denominator;
+        }
+        bool converged = true;
+        for (int i = 0; i < degree; ++i) {
+            if (abs(new_roots[i] - roots[i]) > epsilon) {
+                converged = false;
+                break;
+            }
+        }
+        if (converged) {
+            return new_roots;
+        }
+        roots = new_roots;
+    }
+    return roots;
+}
+
 double f(double x) {
     return (2 * cos(2.5 * x + 3.75) * exp(x / 3 + 0.5) + 4 * sin(3.5 * x + 5.25) * exp(-3 * x - 4.5) + x + 1.5);
 }
@@ -127,54 +168,98 @@ vector<vector<double>> moments(int n, const vector<double> &z) {
     return result;
 }
 
-vector<double> qfsum(vector<double> (*distFunc)(int, double, double), int n, vector<double> &z) {
+vector<double> ncqfsum(vector<double> (*distFunc)(int, double, double), int n, vector<double> &z) {
     vector<double> knots, table(0), qfcoeffs;
-    double result = 0;
+    double result = 0, summod = 0;
     for (int i = 0; i < z.size() - 1; i++) {
         knots = distFunc(n, z[i], z[i + 1]);
         table.insert(table.end(), knots.begin(), knots.end());
-    }
-    vector<vector<double>> T(n, vector<double>(n, 1));
-    if (n > 1) {
-        for (int i = 0; i < n; i++) {
-            T[1][i] = table[i];
+        vector<vector<double>> T(n, vector<double>(n, 1));
+        if (n > 1) {
+            for (int j = 0; j < n; j++) {
+                T[1][j] = table[j];
+            }
         }
-    }
-    for (int i = 2; i < n; i++) {
+        for (int j = 2; i < n; j++) {
+            for (int k = 0; k < n; k++) {
+                T[j][k] = pow(table[k], j);
+            }
+        }
+        qfcoeffs = LUPsolve(T, transpose(moments(n, {z[i], z[i + 1]})));
         for (int j = 0; j < n; j++) {
-            T[i][j] = pow(table[j], i);
+            result += qfcoeffs[j] * f(table[j]);
+            summod += abs(qfcoeffs[j]);
         }
-    }
-    qfcoeffs = LUPsolve(T, transpose(moments(n, z)));
-    double summod;
-    for (int i = 0; i < n; i++) {
-        result += qfcoeffs[i] * f(table[i]);
-        summod+=abs(qfcoeffs[i]);
-        //cout << qfcoeffs[i] << endl;
     }
     return {result, summod};
 }
+
+vector<double> hqfsum(int n, vector<double> &z) {
+    double result = 0, summod = 0;
+    for (int i = 0; i < z.size() - 1; i++) {
+        vector<vector<double>> mu = moments(2 * n, {z[i], z[i + 1]}),mu2(1), b(n, vector<double>(1));
+        vector<vector<double>> M(n, vector<double>(n, 1));
+        vector<double> table(0), qfcoeffs;
+        for (int k = 0; k < n; k++) {
+            for (int j = 0; j < n; j++) {
+                M[k][j] = mu[0][j + k];
+            }
+            b[k][0] = -mu[0][n + k];
+        }
+        vector<double> s = LUPsolve(M, b);
+        s.push_back(1.0);
+        vector<double> roots = durand_kerner_real(s, 100000, 0.000000000000001);
+        table.insert(table.end(), roots.begin(), roots.end());
+        vector<vector<double>> T(n, vector<double>(n, 1));
+        if (n > 1) {
+            for (int j = 0; j < n; j++) {
+                T[1][j] = table[j];
+            }
+        }
+        for (int j = 2; j < n; j++) {
+            for (int k = 0; k < n; k++) {
+                T[j][k] = pow(table[k], j);
+            }
+        }
+        for(int j = 0; j < n; j++){
+            mu2[0].push_back(mu[0][j]);
+        }
+        qfcoeffs = LUPsolve(T, transpose(mu2));
+        for (int j = 0; j < n; j++) {
+            result += qfcoeffs[j] * f(table[j]);
+            summod += abs(qfcoeffs[j]);
+        }
+    }
+    return {result, summod};
+}
+
+
 
 int main() {
     ios_base::sync_with_stdio(0);
     cin.tie(0);
     cout.precision(16);
     double prev = 0, cur, precise = 7.077031437995793610263911711602477164432, summod;
-    vector<double> z(2), is;
+    vector<double> z, is;
     vector<double> plot1, plot2, plot3, plot4;
-    z[0] = 0;
-    z[1] = 1.8;
-    for (int n = 1; n < 56; n++) {
-        is = qfsum(eq_dist, n, z);
+    int l, nn; //the amount of intervals and the amount of nodes;
+    cin >> l >> nn;
+    z = eq_dist(l-1,0,1.8);
+    z.push_back(1.8);
+    z.insert(z.begin(),0);
+    for (int n = 1; n <= nn; n++) {
+        is = hqfsum(n, z);
         cur = is[0];
         summod = is[1];
         plot1.push_back(cur);
-        plot2.push_back(abs(cur-prev));
-        plot3.push_back(abs(precise-cur));
+        plot2.push_back(abs(cur - prev));
+        plot3.push_back(abs(precise - cur));
         plot4.push_back(summod);
-        cout << n << ' ' << fixed << cur << ' ' << fixed << abs(cur - prev) << ' ' << abs(precise - cur) << ' ' << summod << endl;
+        cout << n << ' ' << fixed << cur << ' ' << fixed << abs(cur - prev) << ' ' << abs(precise - cur) << ' '
+             << summod << endl;
         prev = cur;
     }
+    //for Matlab plotting
     /*cout << "[";
     for (int n = 1; n < 56; n++){
         cout << n << ' ';
@@ -190,25 +275,25 @@ int main() {
     for (int n = 1; n < 56; n++){
         cout << n << ' ';
     }
-    cout << "]" << endl;
-    cout << "[";
+    cout << "]" << endl;*/
+    /*cout << "[";
     for (int n = 0; n < 55 ; n++){
         cout << fixed << plot2[n] << ' ';
     }
     cout << "]";
     cout << endl;
-     /*cout << "[";
+     cout << "[";
     for (int n = 1; n < 56; n++){
         cout << n << ' ';
     }
-    cout << "]" << endl;
-    cout << "[";
+    cout << "]" << endl;*/
+    /*cout << "[";
     for (int n = 0; n < 55 ; n++){
         cout << fixed << plot3[n] << ' ';
     }
-    cout << "]";
-    cout << endl;*/
-    /*cout << "[";
+    cout << "]";*/
+    /*cout << endl;
+    cout << "[";
     for (int n = 1; n < 56; n++){
         cout << n << ' ';
     }
