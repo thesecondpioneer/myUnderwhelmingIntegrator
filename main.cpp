@@ -93,7 +93,7 @@ vector<vector<double>> transpose(vector<vector<double>> A) { //returns the trans
 vector<double> durand_kerner_real(vector<double> coefficients, int max_iterations, double epsilon) {
     int degree = coefficients.size() - 1;
     vector<double> roots(degree);
-    double leadcoef = coefficients[coefficients.size()-1];
+    double leadcoef = coefficients[coefficients.size() - 1];
     for (int i = 0; i < coefficients.size(); ++i) {
         coefficients[i] /= leadcoef;
     }
@@ -197,7 +197,7 @@ vector<double> ncqfsum(vector<double> (*distFunc)(int, double, double), int n, v
 vector<double> hqfsum(int n, vector<double> &z) {
     double result = 0, summod = 0;
     for (int i = 0; i < z.size() - 1; i++) {
-        vector<vector<double>> mu = moments(2 * n, {z[i], z[i + 1]}),mu2(1), b(n, vector<double>(1));
+        vector<vector<double>> mu = moments(2 * n, {z[i], z[i + 1]}), mu2(1), b(n, vector<double>(1));
         vector<vector<double>> M(n, vector<double>(n, 1));
         vector<double> table(0), qfcoeffs;
         for (int k = 0; k < n; k++) {
@@ -221,7 +221,7 @@ vector<double> hqfsum(int n, vector<double> &z) {
                 T[j][k] = pow(table[k], j);
             }
         }
-        for(int j = 0; j < n; j++){
+        for (int j = 0; j < n; j++) {
             mu2[0].push_back(mu[0][j]);
         }
         qfcoeffs = LUPsolve(T, transpose(mu2));
@@ -234,30 +234,71 @@ vector<double> hqfsum(int n, vector<double> &z) {
 }
 
 
-
 int main() {
     ios_base::sync_with_stdio(0);
     cin.tie(0);
     cout.precision(16);
-    double prev = 0, cur, precise = 7.077031437995793610263911711602477164432, summod;
+    double prev = 0, cur, precise = 7.077031437995793610263911711602477164432, summod, eps, h, p;
     vector<double> z, is;
     vector<double> plot1, plot2, plot3, plot4;
-    int l, nn; //the amount of intervals and the amount of nodes;
-    cin >> l >> nn;
-    z = eq_dist(l-1,0,1.8);
-    z.push_back(1.8);
-    z.insert(z.begin(),0);
-    for (int n = 1; n <= nn; n++) {
-        is = hqfsum(n, z);
-        cur = is[0];
-        summod = is[1];
-        plot1.push_back(cur);
-        plot2.push_back(abs(cur - prev));
-        plot3.push_back(abs(precise - cur));
-        plot4.push_back(summod);
-        cout << n << ' ' << fixed << cur << ' ' << fixed << abs(cur - prev) << ' ' << abs(precise - cur) << ' '
-             << summod << endl;
-        prev = cur;
+    int l, m, nn; //L multiplier, the amount of intervals and the amount of nodes;
+    string mode;
+    cin >> mode;
+    if (mode == "m") {
+        cin >> m >> nn;
+        z = eq_dist(m - 1, 0, 1.8);
+        z.push_back(1.8);
+        z.insert(z.begin(), 0);
+        for (int n = 1; n <= nn; n++) {
+            is = hqfsum(n, z);
+            cur = is[0];
+            summod = is[1];
+            plot1.push_back(cur);
+            plot2.push_back(abs(cur - prev));
+            plot3.push_back(abs(precise - cur));
+            plot4.push_back(summod);
+            cout << n << ' ' << fixed << cur << ' ' << fixed << abs(cur - prev) << ' ' << abs(precise - cur) << ' '
+                 << summod << endl;
+            prev = cur;
+        }
+    } else if (mode == "a") { //eitken + runge
+        cin >> eps >> nn >> l >> h; //precision, amount of nodes, L multiplier, initial step
+        vector<double> s(3);
+        m = ceil(1.8 / h);
+        for (int i = 0; i < 3; i++) {
+            z = eq_dist(m - 1, 0, 1.8);
+            z.push_back(1.8);
+            z.insert(z.begin(), 0);
+            s[i] = hqfsum(nn, z)[0];
+            m *= l;
+        }
+        while (true) {
+            m = ceil(1.8 / h) * l;
+            p = -log((s[2] - s[1]) / (s[1] - s[0])) / log(l);
+            if (not isnan(p)) {
+                double cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p)))),
+                cm2 = abs((s[2] - s[1]) / (pow(h / l, p) * (1 - pow(l, -p)))), asym = abs(cm1 - cm2);
+                if(asym < 0.000001){
+                    break;
+                }
+            }
+            s[0] = s[1];
+            s[1] = s[2];
+            z = eq_dist(m*l*l - 1, 0, 1.8);
+            z.push_back(1.8);
+            z.insert(z.begin(), 0);
+            s[2] = hqfsum(nn, z)[0];
+            h /= l;
+        }
+        h *= 0.95 * pow((eps * (1 - pow(l, -p))) / abs(s[1] - s[0]), 1 / p);
+        if (ceil(1.8 / h) > m*l) {
+            double m = ceil(1.8 / h);
+            z = eq_dist(m - 1, 0, 1.8);
+            z.push_back(1.8);
+            z.insert(z.begin(), 0);
+            s[2] = hqfsum(nn, z)[0];
+        }
+        cout << fixed << s[2] << ' ' << abs(precise - s[2]) << endl;
     }
     //for Matlab plotting
     /*cout << "[";
@@ -304,4 +345,5 @@ int main() {
     }
     cout << "]";
     cout << endl;*/
+    return 0;
 }
