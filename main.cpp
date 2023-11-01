@@ -139,7 +139,8 @@ double F(double x) {
     return (f(x) / pow(x, 1.0 / 3));
 }
 
-vector<double> eq_dist(int n, double a, double b) {
+vector<double> eq_dist(double m, double a, double b) {
+    int n = ceil(m);
     vector<double> result(0);
     double step = (b - a) / (n + 1);
     for (int i = 0; i < n; i++) {
@@ -241,7 +242,8 @@ int main() {
     double prev = 0, cur, precise = 7.077031437995793610263911711602477164432, summod, eps, h, p;
     vector<double> z, is;
     vector<double> plot1, plot2, plot3, plot4;
-    int l, m, nn; //L multiplier, the amount of intervals and the amount of nodes;
+    double l, m;
+    int nn; //L multiplier, the amount of intervals and the amount of nodes;
     string mode;
     cin >> mode;
     if (mode == "m") {
@@ -272,15 +274,14 @@ int main() {
             s[i] = hqfsum(nn, z)[0];
             m *= l;
         }
+        double cm1 = 1, cmprev;
         while (true) {
             m = ceil(1.8 / h) * l;
-            p = -log((s[2] - s[1]) / (s[1] - s[0])) / log(l);
-            if (not isnan(p)) {
-                double cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p)))),
-                cm2 = abs((s[2] - s[1]) / (pow(h / l, p) * (1 - pow(l, -p)))), asym = abs(cm1 - cm2);
-                if(asym < 0.000001){
-                    break;
-                }
+            p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
+            cmprev = cm1;
+            cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
+            if(abs(cm1 - cmprev) < 0.00004){
+                break;
             }
             s[0] = s[1];
             s[1] = s[2];
@@ -299,51 +300,93 @@ int main() {
             s[2] = hqfsum(nn, z)[0];
         }
         cout << fixed << s[2] << ' ' << abs(precise - s[2]) << endl;
+    } else if (mode == "p") {
+        for(eps = 0.001; eps >= 0.00000000000001; eps*=0.1) {
+            vector<double> s(3);
+            nn = 3; //node amount
+            l = 2; //L multiplier
+            h = 0.9; //initial step
+            m = ceil(1.8 / h);
+            for (int i = 0; i < 3; i++) {
+                z = eq_dist(m - 1, 0, 1.8);
+                z.push_back(1.8);
+                z.insert(z.begin(), 0);
+                s[i] = hqfsum(nn, z)[0];
+                m *= l;
+            }
+            double cm1 = 1, cmprev;
+            while (true) {
+                m = ceil(1.8 / h) * l;
+                p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
+                cmprev = cm1;
+                cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
+                if (abs(cm1 - cmprev) < 0.00004) {
+                    break;
+                }
+                s[0] = s[1];
+                s[1] = s[2];
+                z = eq_dist(m * l * l - 1, 0, 1.8);
+                z.push_back(1.8);
+                z.insert(z.begin(), 0);
+                s[2] = hqfsum(nn, z)[0];
+                h /= l;
+            }
+            h *= 0.95 * pow((eps * (1 - pow(l, -p))) / abs(s[1] - s[0]), 1 / p);
+            if (ceil(1.8 / h) > m * l) {
+                double m = ceil(1.8 / h);
+                z = eq_dist(m - 1, 0, 1.8);
+                z.push_back(1.8);
+                z.insert(z.begin(), 0);
+                s[2] = hqfsum(nn, z)[0];
+            }
+            plot1.push_back(eps);
+            plot2.push_back(abs(precise-s[2]));
+            plot3.push_back(s[2]);
+        }
+        //for Matlab plotting
+        /*cout << "[";
+        for (int n = 1; n < 56; n++){
+            cout << n << ' ';
+        }
+        cout << "]" << endl;*/
+        cout << "[";
+        for (int n = 0; n < plot1.size() ; n++){
+            cout << fixed << plot1[n] << ' ';
+        }
+        cout << "]" << endl;
+        /*cout << endl;
+        cout << "[";
+        for (int n = 1; n < 56; n++){
+            cout << n << ' ';
+        }
+        cout << "]" << endl;*/
+        cout << "[";
+        for (int n = 0; n < plot2.size() ; n++){
+            cout << fixed << plot2[n] << ' ';
+        }
+        cout << "]" << endl;
+        /*cout << "[";
+        for (int n = 1; n < 56; n++){
+            cout << n << ' ';
+        }
+        cout << "]" << endl;*/
+        cout << "[";
+        for (int n = 0; n < plot3.size() ; n++){
+            cout << fixed << plot3[n] << ' ';
+        }
+        cout << "]" << endl;
+        /*
+        cout << "[";
+        for (int n = 1; n < 56; n++){
+            cout << n << ' ';
+        }
+        cout << "]" << endl;
+        cout << "[";
+        for (int n = 0; n < 55 ; n++){
+            cout << fixed << plot4[n] << ' ';
+        }
+        cout << "]";
+        cout << endl;*/
     }
-    //for Matlab plotting
-    /*cout << "[";
-    for (int n = 1; n < 56; n++){
-        cout << n << ' ';
-    }
-    cout << "]" << endl;
-    cout << "[";
-    for (int n = 0; n < 55 ; n++){
-        cout << fixed << plot1[n] << ' ';
-    }
-    cout << "]";
-    cout << endl;
-    cout << "[";
-    for (int n = 1; n < 56; n++){
-        cout << n << ' ';
-    }
-    cout << "]" << endl;*/
-    /*cout << "[";
-    for (int n = 0; n < 55 ; n++){
-        cout << fixed << plot2[n] << ' ';
-    }
-    cout << "]";
-    cout << endl;
-     cout << "[";
-    for (int n = 1; n < 56; n++){
-        cout << n << ' ';
-    }
-    cout << "]" << endl;*/
-    /*cout << "[";
-    for (int n = 0; n < 55 ; n++){
-        cout << fixed << plot3[n] << ' ';
-    }
-    cout << "]";*/
-    /*cout << endl;
-    cout << "[";
-    for (int n = 1; n < 56; n++){
-        cout << n << ' ';
-    }
-    cout << "]" << endl;
-    cout << "[";
-    for (int n = 0; n < 55 ; n++){
-        cout << fixed << plot4[n] << ' ';
-    }
-    cout << "]";
-    cout << endl;*/
     return 0;
 }
