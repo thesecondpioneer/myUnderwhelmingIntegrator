@@ -188,7 +188,12 @@ vector<double> ncqfsum(vector<double> (*distFunc)(double, double, double), int n
             }
         }
         qfcoeffs = LUPsolve(T, transpose(moments(n, {z[i], z[i + 1]})));
+        bool err = false;
         for (int j = 0; j < n; j++) {
+            if (qfcoeffs[j] < 0 and !err){
+                cerr << "Negative coefficient of a quadrature formula" << endl;
+                err = true;
+            }
             result += qfcoeffs[j] * f(table[j]);
             summod += abs(qfcoeffs[j]);
         }
@@ -211,6 +216,13 @@ vector<double> gqfsum(int n, vector<double> &z) {
         vector<double> s = LUPsolve(M, b);
         s.push_back(1.0);
         vector<double> roots = durand_kerner_real(s, 100000, 0.000000000000001);
+        bool err = false;
+        for (int j = 0; j < roots.size(); j++){
+            if ((roots[j] < z[i] or roots[j] > z[i+1]) and !err){
+                cerr << "Roots out of bounds" << endl;
+                err = true;
+            }
+        }
         table.insert(table.end(), roots.begin(), roots.end());
         vector<vector<double>> T(n, vector<double>(n, 1));
         if (n > 1) {
@@ -227,7 +239,12 @@ vector<double> gqfsum(int n, vector<double> &z) {
             mu2[0].push_back(mu[0][j]);
         }
         qfcoeffs = LUPsolve(T, transpose(mu2));
+        err = false;
         for (int j = 0; j < n; j++) {
+            if (qfcoeffs[j] < 0 and !err){
+                cerr << "Negative coefficient of a quadrature formula" << endl;
+                err = true;
+            }
             result += qfcoeffs[j] * f(table[j]);
             summod += abs(qfcoeffs[j]);
         }
@@ -270,14 +287,14 @@ int main() {
             z = eq_dist(m + 1, 0, 1.8);
             s[i] = gqfsum(nn, z)[0];
             m *= l;
-            cout << std::abs(precise - s[i]) << std::endl;
+            //cout << std::abs(precise - s[i]) << std::endl;
         }
         double cm1, cm2 = INT64_MIN;
         while (true) {
             m = ceil(1.8 / h) * l;
             p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
             cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
-            if(((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.1) and (p >= nn * 2 - 1) and (p <= nn * 2 + 1)){
+            if((((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.2) or nn >= 3) and (p >= nn * 2 - 1) and (p <= nn * 2 + 1)){
                 break;
             }
             s[0] = s[1];
@@ -286,11 +303,11 @@ int main() {
             s[2] = gqfsum(nn, z)[0];
             h /= l;
             cm2 = cm1;
-            cout << std::abs(precise - s[2]) << std::endl;
+            //cout << std::abs(precise - s[2]) << std::endl;
         }
-        h *= 0.95 * pow((eps * (1 - pow(l, -p))) / abs(s[1] - s[0]), 1 / p);
-        if (ceil(1.8 / h) > m*l) {
-            double m = ceil(1.8 / h);
+        double r = (s[1] - s[0])/(1 - std::pow(l, -p)), hopt = h * 0.95 * std::pow(eps / std::abs(r) , 1 / p), ropt = r * std::pow(hopt / h, p);
+        if (ceil(1.8 / hopt) > m*l) {
+            double m = ceil(1.8 / hopt);
             z = eq_dist(m + 1, 0, 1.8);
             s[2] = gqfsum(nn, z)[0];
         }
@@ -303,7 +320,7 @@ int main() {
             z = eq_dist(m + 1, 0, 1.8);
             s[i] = ncqfsum(eq_dist,nn, z)[0];
             m *= l;
-            cout << std::abs(precise - s[i]) << std::endl;
+            //cout << std::abs(precise - s[i]) << std::endl;
         }
         double cm1, cm2 = INT64_MIN;
         while (true) {
@@ -317,14 +334,13 @@ int main() {
             s[1] = s[2];
             z = eq_dist(m*l*l + 1, 0, 1.8);
             s[2] = ncqfsum(eq_dist,nn, z)[0];
-            cout << std::abs(precise - s[2]) << std::endl;
+            //cout << std::abs(precise - s[2]) << std::endl;
             h /= l;
             cm2 = cm1;
         }
-        double r = (s[1] - s[0])/(1 - std::pow(l, -p));
-        h *= 0.95 * pow(eps/std::abs(r) , 1 / p);
-        if (ceil(1.8 / h) > m*l) {
-            m = ceil(1.8 / h);
+        double r = (s[1] - s[0])/(1 - std::pow(l, -p)), hopt = h * 0.95 * std::pow(eps/std::abs(r) , 1 / p), ropt = r * std::pow(hopt / h, p);
+        if (ceil(1.8 / hopt) > m*l) {
+            m = ceil(1.8 / hopt);
             z = eq_dist(m + 1, 0, 1.8);
             s[2] = ncqfsum(eq_dist, nn, z)[0];
         }
@@ -338,32 +354,37 @@ int main() {
             m = ceil(1.8 / h);
             for (int i = 0; i < 3; i++) {
                 z = eq_dist(m + 1, 0, 1.8);
-                s[i] = gqfsum(nn, z)[0];
+                s[i] = ncqfsum(eq_dist,nn, z)[0];
                 m *= l;
+                //cout << std::abs(precise - s[i]) << std::endl;
             }
-            double cm1, cm2;
+            double cm1, cm2 = INT64_MIN;
             while (true) {
                 m = ceil(1.8 / h) * l;
                 p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
                 cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
-                cm2 = abs((s[2] - s[1]) / (pow(h/2, p) * (1 - pow(l, -p))));
-                if ((static_cast<int>(std::floor(std::log10(std::abs(cm1 - cm2)))) < 0.01) and (p > 1)) {
+                if(((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.1) and (p >= nn - 1) and (p <= nn + 1)){
                     break;
                 }
                 s[0] = s[1];
                 s[1] = s[2];
-                z = eq_dist(m * l * l + 1, 0, 1.8);
-                s[2] = gqfsum(nn, z)[0];
+                z = eq_dist(m*l*l + 1, 0, 1.8);
+                s[2] = ncqfsum(eq_dist,nn, z)[0];
+                //cout << std::abs(precise - s[2]) << std::endl;
                 h /= l;
+                cm2 = cm1;
             }
-            h *= 0.95 * pow((eps * (1 - pow(l, -p))) / abs(s[1] - s[0]), 1 / p);
-            if (ceil(1.8 / h) > m * l) {
-                double m = ceil(1.8 / h);
+            double r = (s[1] - s[0])/(1 - std::pow(l, -p)), hopt = h * 0.95 * std::pow(eps/std::abs(r) , 1 / p), ropt = r * std::pow(hopt / h, p), rr;
+            if (ceil(1.8 / hopt) > m*l) {
+                m = ceil(1.8 / hopt);
                 z = eq_dist(m + 1, 0, 1.8);
-                s[2] = gqfsum(nn, z)[0];
+                s[2] = ncqfsum(eq_dist, nn, z)[0];
+                rr = ropt;
+            } else {
+                rr = r;
             }
             plot1.push_back(eps);
-            plot2.push_back(abs(precise-s[2]));
+            plot2.push_back(abs(precise - s[2]));
             plot3.push_back(s[2]);
         }
         //for Matlab plotting
