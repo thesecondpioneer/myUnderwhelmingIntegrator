@@ -196,7 +196,7 @@ vector<double> ncqfsum(vector<double> (*distFunc)(double, double, double), int n
     return {result, summod};
 }
 
-vector<double> hqfsum(int n, vector<double> &z) {
+vector<double> gqfsum(int n, vector<double> &z) {
     double result = 0, summod = 0;
     for (int i = 0; i < z.size() - 1; i++) {
         vector<vector<double>> mu = moments(2 * n, {z[i], z[i + 1]}), mu2(1), b(n, vector<double>(1));
@@ -251,7 +251,7 @@ int main() {
         cin >> m >> nn;
         z = eq_dist(m + 1, 0, 1.8);
         for (int n = 1; n <= nn; n++) {
-            is = hqfsum(n, z);
+            is = gqfsum(n, z);
             cur = is[0];
             summod = is[1];
             plot1.push_back(cur);
@@ -262,35 +262,37 @@ int main() {
                  << summod << endl;
             prev = cur;
         }
-    } else if (mode == "ah") { //Hauss + eitken + runge
+    } else if (mode == "ag") { //Gauss + eitken + runge
         cin >> eps >> nn >> l >> h; //precision, amount of nodes, L multiplier, initial step
         vector<double> s(3);
         m = ceil(1.8 / h);
         for (int i = 0; i < 3; i++) {
             z = eq_dist(m + 1, 0, 1.8);
-            s[i] = hqfsum(nn, z)[0];
+            s[i] = gqfsum(nn, z)[0];
             m *= l;
+            cout << std::abs(precise - s[i]) << std::endl;
         }
-        double cm1, cm2;
+        double cm1, cm2 = INT64_MIN;
         while (true) {
             m = ceil(1.8 / h) * l;
             p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
             cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
-            cm2 = abs((s[2] - s[1]) / (pow(h/2, p) * (1 - pow(l, -p))));
-            if((static_cast<int>(std::floor(std::log10(std::abs(cm1 - cm2)))) < 0.01) and (p > 1)){
+            if(((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.1) and (p >= nn * 2 - 1) and (p <= nn * 2 + 1)){
                 break;
             }
             s[0] = s[1];
             s[1] = s[2];
             z = eq_dist(m*l*l + 1, 0, 1.8);
-            s[2] = hqfsum(nn, z)[0];
+            s[2] = gqfsum(nn, z)[0];
             h /= l;
+            cm2 = cm1;
+            cout << std::abs(precise - s[2]) << std::endl;
         }
         h *= 0.95 * pow((eps * (1 - pow(l, -p))) / abs(s[1] - s[0]), 1 / p);
         if (ceil(1.8 / h) > m*l) {
             double m = ceil(1.8 / h);
             z = eq_dist(m + 1, 0, 1.8);
-            s[2] = hqfsum(nn, z)[0];
+            s[2] = gqfsum(nn, z)[0];
         }
         cout << fixed << s[2] << ' ' << abs(precise - s[2]) << endl;
     } else if (mode == "anc") { //Newton-Cotes + eitken + runge
@@ -301,27 +303,30 @@ int main() {
             z = eq_dist(m + 1, 0, 1.8);
             s[i] = ncqfsum(eq_dist,nn, z)[0];
             m *= l;
+            cout << std::abs(precise - s[i]) << std::endl;
         }
-        double cm1, cm2;
+        double cm1, cm2 = INT64_MIN;
         while (true) {
             m = ceil(1.8 / h) * l;
             p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
             cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
-            cm2 = abs((s[2] - s[1]) / (pow(h/2, p) * (1 - pow(l, -p))));
-            if((static_cast<int>(std::floor(std::log10(std::abs(cm1 - cm2)))) < 0.01) and (p > 1)){
+            if(((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.1) and (p >= nn - 1) and (p <= nn + 1)){
                 break;
             }
             s[0] = s[1];
             s[1] = s[2];
             z = eq_dist(m*l*l + 1, 0, 1.8);
             s[2] = ncqfsum(eq_dist,nn, z)[0];
+            cout << std::abs(precise - s[2]) << std::endl;
             h /= l;
+            cm2 = cm1;
         }
-        h *= 0.95 * pow((eps * (1 - pow(l, -p))) / abs(s[1] - s[0]), 1 / p);
+        double r = (s[1] - s[0])/(1 - std::pow(l, -p));
+        h *= 0.95 * pow(eps/std::abs(r) , 1 / p);
         if (ceil(1.8 / h) > m*l) {
-            double m = ceil(1.8 / h);
+            m = ceil(1.8 / h);
             z = eq_dist(m + 1, 0, 1.8);
-            s[2] = hqfsum(nn, z)[0];
+            s[2] = ncqfsum(eq_dist, nn, z)[0];
         }
         cout << fixed << s[2] << ' ' << abs(precise - s[2]) << endl;
     } else if (mode == "p") {
@@ -333,7 +338,7 @@ int main() {
             m = ceil(1.8 / h);
             for (int i = 0; i < 3; i++) {
                 z = eq_dist(m + 1, 0, 1.8);
-                s[i] = hqfsum(nn, z)[0];
+                s[i] = gqfsum(nn, z)[0];
                 m *= l;
             }
             double cm1, cm2;
@@ -348,19 +353,19 @@ int main() {
                 s[0] = s[1];
                 s[1] = s[2];
                 z = eq_dist(m * l * l + 1, 0, 1.8);
-                s[2] = hqfsum(nn, z)[0];
+                s[2] = gqfsum(nn, z)[0];
                 h /= l;
             }
             h *= 0.95 * pow((eps * (1 - pow(l, -p))) / abs(s[1] - s[0]), 1 / p);
             if (ceil(1.8 / h) > m * l) {
                 double m = ceil(1.8 / h);
                 z = eq_dist(m + 1, 0, 1.8);
-                s[2] = hqfsum(nn, z)[0];
+                s[2] = gqfsum(nn, z)[0];
             }
             plot1.push_back(eps);
             plot2.push_back(abs(precise-s[2]));
             plot3.push_back(s[2]);
-            }
+        }
         //for Matlab plotting
         /*cout << "[";
         for (int n = 1; n < 56; n++){
