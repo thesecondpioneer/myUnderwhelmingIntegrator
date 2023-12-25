@@ -4,6 +4,9 @@
 
 using namespace std;
 
+int fcalls = 0;
+bool ncoef = false, roob = false;
+
 vector<vector<double>> mmultiply(vector<vector<double>> A, vector<vector<double>> B) { //matrix multiplication
     if (A[0].size() == B.size()) {
         vector<vector<double>> C(A.size());
@@ -142,7 +145,7 @@ double F(double x) {
 vector<double> eq_dist(double m, double a, double b) {
     int n = ceil(m);
     vector<double> result(1, a);
-    double step = (b - a) / (n-1);
+    double step = (b - a) / (n - 1);
     for (int i = 1; i < n; i++) {
         a += step;
         result.push_back(a);
@@ -188,13 +191,13 @@ vector<double> ncqfsum(vector<double> (*distFunc)(double, double, double), int n
             }
         }
         qfcoeffs = LUPsolve(T, transpose(moments(n, {z[i], z[i + 1]})));
-        bool err = false;
         for (int j = 0; j < n; j++) {
-            if (qfcoeffs[j] < 0 and !err){
+            if (qfcoeffs[j] < 0 and !ncoef) {
                 cerr << "Negative coefficient of a quadrature formula" << endl;
-                err = true;
+                ncoef = true;
             }
             result += qfcoeffs[j] * f(table[j]);
+            fcalls++;
             summod += abs(qfcoeffs[j]);
         }
     }
@@ -215,12 +218,24 @@ vector<double> gqfsum(int n, vector<double> &z) {
         }
         vector<double> s = LUPsolve(M, b);
         s.push_back(1.0);
-        vector<double> roots = durand_kerner_real(s, 100000, 0.000000000000001);
-        bool err = false;
-        for (int j = 0; j < roots.size(); j++){
-            if ((roots[j] < z[i] or roots[j] > z[i+1]) and !err){
+        vector<double> roots;
+        if (n > 2) {
+            roots = durand_kerner_real(s, 100000, 0.000000000000001);
+        } else if (n == 2) {
+            roots.resize(2);
+            roots[0] = (-s[1] + std::sqrt(s[1] * s[1] - 4 * s[0])) / 2;
+            roots[1] = (-s[1] - std::sqrt(s[1] * s[1] - 4 * s[0])) / 2;
+            if (roots[0] < roots[1]) {
+                swap(roots[0], roots[1]);
+            }
+        } else {
+            roots.resize(1);
+            roots[0] = -s[0];
+        }
+        for (int j = 0; j < roots.size(); j++) {
+            if ((roots[j] < z[i] or roots[j] > z[i + 1]) and !roob) {
                 cerr << "Roots out of bounds" << endl;
-                err = true;
+                roob = true;
             }
         }
         table.insert(table.end(), roots.begin(), roots.end());
@@ -239,13 +254,13 @@ vector<double> gqfsum(int n, vector<double> &z) {
             mu2[0].push_back(mu[0][j]);
         }
         qfcoeffs = LUPsolve(T, transpose(mu2));
-        err = false;
         for (int j = 0; j < n; j++) {
-            if (qfcoeffs[j] < 0 and !err){
+            if (qfcoeffs[j] < 0 and !ncoef) {
                 cerr << "Negative coefficient of a quadrature formula" << endl;
-                err = true;
+                ncoef = true;
             }
             result += qfcoeffs[j] * f(table[j]);
+            fcalls++;
             summod += abs(qfcoeffs[j]);
         }
     }
@@ -257,7 +272,7 @@ int main() {
     ios_base::sync_with_stdio(0);
     cin.tie(0);
     cout.precision(16);
-    double prev = 0, cur, precise = 7.077031437995793610263911711602477164432, summod, eps, h, p;
+    double prev = 0, cur, precise = 7.077031437995793610263911711602477164432, summod, eps, h, p, pprev;
     vector<double> z, is;
     vector<double> plot1, plot2, plot3, plot4;
     double l, m;
@@ -279,74 +294,96 @@ int main() {
                  << summod << endl;
             prev = cur;
         }
-    } else if (mode == "ag") { //Gauss + eitken + runge
+    } else if (mode == "ag") { //Gauss + Aitken + runge
         cin >> eps >> nn >> l >> h; //precision, amount of nodes, L multiplier, initial step
         vector<double> s(3);
-        m = ceil(1.8 / h);
-        for (int i = 0; i < 3; i++) {
-            z = eq_dist(m + 1, 0, 1.8);
-            s[i] = gqfsum(nn, z)[0];
-            m *= l;
-            //cout << std::abs(precise - s[i]) << std::endl;
-        }
-        double cm1, cm2 = INT64_MIN;
+        double cm1;
+        int it = 0;
         while (true) {
-            m = ceil(1.8 / h) * l;
+            for (int i = 0; i < 3; i++) {
+                m = ceil(1.8 / h);
+                z = eq_dist(m + 1, 0, 1.8);
+                s[i] = gqfsum(nn, z)[0];
+                h /= l;
+                //cout << std::abs(precise - s[i]) << std::endl;
+            }
+            h *= l * l * l;
+            it++;
+            pprev = p;
             p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
             cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
-            if((((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.2) or nn >= 3) and (p >= nn * 2 - 1) and (p <= nn * 2 + 1)){
+            double r = (s[1] - s[0]) / (1 - std::pow(l, -p));
+            if ((((abs(p - pprev) / std::max(pprev, p)) < 0.2) or nn >= 3) and (p >= nn * 2 - 1.5) and
+                (p <= nn * 2 + 1.5)) {
+                break;
+            } else if (((p <= nn * 2 - 1.5) or (p >= nn * 2 + 1.5)) and it > 1) {
+                while ((p <= nn * 2 - 1.5) or (p >= nn * 2 + 1.5)) {
+                    h *= l;
+                    m = ceil(1.8 / h);
+                    s[2] = s[1];
+                    s[1] = s[0];
+                    z = eq_dist(m + 1, 0, 1.8);
+                    s[0] = gqfsum(nn, z)[0];
+                    it++;
+                    p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
+                    r = (s[1] - s[0]) / (1 - std::pow(l, -p));
+                }
+                h *= 0.95 * std::pow(eps / std::abs(r), 1 / p);
                 break;
             }
-            s[0] = s[1];
-            s[1] = s[2];
-            z = eq_dist(m*l*l + 1, 0, 1.8);
-            s[2] = gqfsum(nn, z)[0];
-            h /= l;
-            cm2 = cm1;
+            h *= 0.95 * std::pow(eps / std::abs(r), 1 / p);
             //cout << std::abs(precise - s[2]) << std::endl;
         }
-        double r = (s[1] - s[0])/(1 - std::pow(l, -p)), hopt = h * 0.95 * std::pow(eps / std::abs(r) , 1 / p), ropt = r * std::pow(hopt / h, p);
-        if (ceil(1.8 / hopt) > m*l) {
-            double m = ceil(1.8 / hopt);
-            z = eq_dist(m + 1, 0, 1.8);
-            s[2] = gqfsum(nn, z)[0];
-        }
-        cout << fixed << s[2] << ' ' << abs(precise - s[2]) << endl;
-    } else if (mode == "anc") { //Newton-Cotes + eitken + runge
+        m = ceil(1.8 / h);
+        z = eq_dist(m + 1, 0, 1.8);
+        s[0] = gqfsum(nn, z)[0];
+        cout << fixed << s[0] << ' ' << abs(precise - s[0]) << endl << "Function calls: " << fcalls << endl
+             << "Iterations " << it << endl;
+    } else if (mode == "anc") { //Newton-Cotes + Aitken + runge
         cin >> eps >> nn >> l >> h; //precision, amount of nodes, L multiplier, initial step
         vector<double> s(3);
-        m = ceil(1.8 / h);
-        for (int i = 0; i < 3; i++) {
-            z = eq_dist(m + 1, 0, 1.8);
-            s[i] = ncqfsum(eq_dist,nn, z)[0];
-            m *= l;
-            //cout << std::abs(precise - s[i]) << std::endl;
-        }
         double cm1, cm2 = INT64_MIN;
+        int it = 0;
         while (true) {
-            m = ceil(1.8 / h) * l;
+            for (int i = 0; i < 3; i++) {
+                m = ceil(1.8 / h);
+                z = eq_dist(m + 1, 0, 1.8);
+                s[i] = ncqfsum(eq_dist, nn, z)[0];
+                h /= l;
+                //cout << std::abs(precise - s[i]) << std::endl;
+            }
+            h *= l * l * l;
+            it++;
+            pprev = p;
             p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
             cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
-            if(((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.1) and (p >= nn - 1) and (p <= nn + 1)){
+            double r = (s[1] - s[0]) / (1 - std::pow(l, -p));
+            if (((abs(p - pprev) / abs(std::max(pprev, p))) < 0.2) and (p >= nn - 1.5) and (p <= nn + 1.5)) {
+                break;
+            } else if (((p <= nn - 1.5) or (p >= nn + 1.5)) and it > 1) {
+                while ((p <= nn - 1.5) or (p >= nn + 1.5)) {
+                    h *= l;
+                    m = ceil(1.8 / h);
+                    s[2] = s[1];
+                    s[1] = s[0];
+                    z = eq_dist(m + 1, 0, 1.8);
+                    s[0] = ncqfsum(eq_dist, nn, z)[0];
+                    it++;
+                    p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
+                    r = (s[1] - s[0]) / (1 - std::pow(l, -p));
+                }
+                h *= 0.95 * std::pow(eps / std::abs(r), 1 / p);
                 break;
             }
-            s[0] = s[1];
-            s[1] = s[2];
-            z = eq_dist(m*l*l + 1, 0, 1.8);
-            s[2] = ncqfsum(eq_dist,nn, z)[0];
-            //cout << std::abs(precise - s[2]) << std::endl;
-            h /= l;
-            cm2 = cm1;
+            h *= 0.95 * std::pow(eps / std::abs(r), 1 / p);
         }
-        double r = (s[1] - s[0])/(1 - std::pow(l, -p)), hopt = h * 0.95 * std::pow(eps/std::abs(r) , 1 / p), ropt = r * std::pow(hopt / h, p);
-        if (ceil(1.8 / hopt) > m*l) {
-            m = ceil(1.8 / hopt);
-            z = eq_dist(m + 1, 0, 1.8);
-            s[2] = ncqfsum(eq_dist, nn, z)[0];
-        }
-        cout << fixed << s[2] << ' ' << abs(precise - s[2]) << endl;
+        m = ceil(1.8 / h);
+        z = eq_dist(m + 1, 0, 1.8);
+        s[0] = ncqfsum(eq_dist, nn, z)[0];
+        cout << fixed << s[0] << ' ' << abs(precise - s[0]) << endl << "Function calls: " << fcalls << endl
+             << "Iterations " << it << endl;
     } else if (mode == "p") {
-        for(eps = 0.001; eps >= 0.00000000000001; eps*=0.1) {
+        for (eps = 0.001; eps >= 0.00000000000001; eps *= 0.1) {
             vector<double> s(3);
             nn = 3; //node amount
             l = 2; //L multiplier
@@ -354,7 +391,7 @@ int main() {
             m = ceil(1.8 / h);
             for (int i = 0; i < 3; i++) {
                 z = eq_dist(m + 1, 0, 1.8);
-                s[i] = ncqfsum(eq_dist,nn, z)[0];
+                s[i] = ncqfsum(eq_dist, nn, z)[0];
                 m *= l;
                 //cout << std::abs(precise - s[i]) << std::endl;
             }
@@ -363,19 +400,20 @@ int main() {
                 m = ceil(1.8 / h) * l;
                 p = -log(abs((s[2] - s[1]) / (s[1] - s[0]))) / log(l);
                 cm1 = abs((s[1] - s[0]) / (pow(h, p) * (1 - pow(l, -p))));
-                if(((abs(cm1-cm2)/std::max(cm1, cm2)) < 0.1) and (p >= nn - 1) and (p <= nn + 1)){
+                if (((abs(cm1 - cm2) / std::max(cm1, cm2)) < 0.1) and (p >= nn - 1) and (p <= nn + 1)) {
                     break;
                 }
                 s[0] = s[1];
                 s[1] = s[2];
-                z = eq_dist(m*l*l + 1, 0, 1.8);
-                s[2] = ncqfsum(eq_dist,nn, z)[0];
+                z = eq_dist(m * l * l + 1, 0, 1.8);
+                s[2] = ncqfsum(eq_dist, nn, z)[0];
                 //cout << std::abs(precise - s[2]) << std::endl;
                 h /= l;
                 cm2 = cm1;
             }
-            double r = (s[1] - s[0])/(1 - std::pow(l, -p)), hopt = h * 0.95 * std::pow(eps/std::abs(r) , 1 / p), ropt = r * std::pow(hopt / h, p), rr;
-            if (ceil(1.8 / hopt) > m*l) {
+            double r = (s[1] - s[0]) / (1 - std::pow(l, -p)), hopt =
+                    h * 0.95 * std::pow(eps / std::abs(r), 1 / p), ropt = r * std::pow(hopt / h, p), rr;
+            if (ceil(1.8 / hopt) > m * l) {
                 m = ceil(1.8 / hopt);
                 z = eq_dist(m + 1, 0, 1.8);
                 s[2] = ncqfsum(eq_dist, nn, z)[0];
@@ -394,7 +432,7 @@ int main() {
         }
         cout << "]" << endl;*/
         cout << "[";
-        for (int n = 0; n < plot1.size() ; n++){
+        for (int n = 0; n < plot1.size(); n++) {
             cout << fixed << plot1[n] << ' ';
         }
         cout << "]" << endl;
@@ -405,7 +443,7 @@ int main() {
         }
         cout << "]" << endl;*/
         cout << "[";
-        for (int n = 0; n < plot2.size() ; n++){
+        for (int n = 0; n < plot2.size(); n++) {
             cout << fixed << plot2[n] << ' ';
         }
         cout << "]" << endl;
@@ -415,7 +453,7 @@ int main() {
         }
         cout << "]" << endl;*/
         cout << "[";
-        for (int n = 0; n < plot3.size() ; n++){
+        for (int n = 0; n < plot3.size(); n++) {
             cout << fixed << plot3[n] << ' ';
         }
         cout << "]" << endl;
